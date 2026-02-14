@@ -6,6 +6,7 @@
 #include<string.h>
 #include<sys/un.h> //for sockaddr_un structure
 #include<unistd.h> //for write and read system call
+#include<cstring> //for strcpy function
 int main(){
     //initialize the buffer
     char rbuf[30];
