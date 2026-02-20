@@ -5,16 +5,27 @@
 #include<iostream>
 #include<sys/socket.h>
 #include<sys/types.h>
-#include<unistd.h> 
-#include<netinet/in.h> //defines the structs sockaddr_in , in_addr , byte order conversions like htons htonl and vice versa , and protocol like IPPROTO_TCP , IPPROTO_UDP
+#include<unistd.h>
+#include<netinet/in.h>
 #include<arpa/inet.h>
-#include<cstdint>
 #include<cstring>
+#include<signal.h>
+#include<sys/wait.h>
+
+//this function will be called to FINISH THE ZOMBIE PROCESSES
+void reap_zombies(int){ 
+    while(waitpid(-1, nullptr, WNOHANG) > 0);
+}
+
 int main(){
+
+    //installing SIGCHLD handler to reap children
+    signal(SIGCHLD, reap_zombies);
+
     int SocketFD = -1; //main socket that will only listen
     int SessionFD =-1; //client session socket that handles clients !
     int pid=-1; //process id for fork
-    char ReadBuffer[60];
+    char ReadBuffer[60]{}; //correct initialization of empty buffer
     SocketFD=socket(AF_INET,SOCK_STREAM,0);
     if(SocketFD < 0){
         perror("Socket Creation Failed");
@@ -22,6 +33,10 @@ int main(){
     }
     std::cout<<"Socket Creation Successfull \n";
 
+    // Allow quick restart after crash
+    int opt = 1;
+    setsockopt(SocketFD, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    
     struct sockaddr_in SocketAddress;
     memset(&SocketAddress,0,sizeof(SocketAddress));
     SocketAddress.sin_family=AF_INET;
@@ -74,25 +89,26 @@ int main(){
         else if(pid==0){
             //child process
             //each child will be processing communication with client , so we add all communication code here
+            close(SocketFD);//we need to close listening socket because the child process inherits EVERYTHING FROM Parent process including the listening socket            
             ssize_t ReadWriteBytes=0; //to have count of Number of Bytes Sent and Received
-            ReadWriteBytes = read(SessionFD,ReadBuffer,sizeof(ReadBuffer));
-            if(ReadWriteBytes <=0){
-                perror("Error Receiving Message from Client !");
+            ssize_t bytes;
+            while((bytes = read(SessionFD, ReadBuffer, sizeof(ReadBuffer))) > 0){
+
+                ssize_t totalSent = 0;
+                while(totalSent < bytes){
+                    ssize_t sent = write(SessionFD,
+                                        ReadBuffer + totalSent,
+                                        bytes - totalSent);
+                    if(sent <= 0){
+                        perror("Write Failed");
+                        break;
+                    }
+                    totalSent += sent;
+                }
             }
-            else{
-                std::cout<<"Received Message From Client : \n";
-                std::cout.write(ReadBuffer,ReadWriteBytes)<<"\n";
-            }
-            ReadWriteBytes = write(SessionFD,ReadBuffer,ReadWriteBytes); //write exactly the number of bytes that are read , not less or more
-            if(ReadWriteBytes <=0){
-                perror("Error Writing to client !");
-            }
-            else{
-                std::cout<<"Written To Client Successfully ! \n";
-            }
+            std::cout<<"Written to Client Successfully\n";
             std::cout<<"Closing Client Connection \n";
             close(SessionFD);
-            close(SocketFD);//we need to close listening socket too because the child process inherits EVERYTHING FROM Parent process including the listening socket
             _exit(0); //terminate the child process after client disconnection
         }
 
