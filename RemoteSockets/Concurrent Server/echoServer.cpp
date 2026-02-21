@@ -14,13 +14,17 @@
 
 //this function will be called to FINISH THE ZOMBIE PROCESSES
 void reap_zombies(int){ 
-    while(waitpid(-1, nullptr, WNOHANG) > 0);
+    int status;
+    wait(&status);
+    std::cout<<"----SIGCHILD STATUS : "<<status<<"\n";
 }
 
 int main(){
 
-    //installing SIGCHLD handler to reap children
+    //REGISTERING Signal handler for SIGCHILD Signal
     signal(SIGCHLD, reap_zombies);
+    //whenever SIGCHILD is reveived or catched by parent it calls reap_zombies function
+    //then resumes its normal flow
 
     int SocketFD = -1; //main socket that will only listen
     int SessionFD =-1; //client session socket that handles clients !
@@ -110,6 +114,7 @@ int main(){
             std::cout<<"Closing Client Connection \n";
             close(SessionFD);
             _exit(0); //terminate the child process after client disconnection
+            //whenever child terminates , OS Automatically generates SIGCHILD signal and sends it to parent process
         }
 
         //////////////////////////FORK///////////////////////////
